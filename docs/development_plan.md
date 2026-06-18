@@ -4,13 +4,16 @@
 
 ## 当前基础
 
-已经有三块基础能力：
+已经有几块基础能力：
 
 | 文件 | 作用 |
 | --- | --- |
 | `balatro_state_reader.py` | 读取 BalatroBot 的 `gamestate`，并提供压缩状态摘要 |
 | `balatro_action_client.py` | 封装 BalatroBot 的动作 API，让程序可以操作游戏 |
-| `simple_bot.py` | 最小闭环 bot，按当前游戏阶段执行最朴素的合法动作 |
+| `card_utils.py` | 解析普通扑克牌的花色、点数和基础筹码 |
+| `hand_evaluator.py` | 枚举出牌组合，识别基础牌型并估分 |
+| `strategy_play.py` | SELECTING_HAND 阶段的基础出牌策略 |
+| `simple_bot.py` | 最小闭环 bot，按当前游戏阶段执行动作 |
 
 当前目标不是马上训练模型，而是先把“观察、行动、反馈”这条闭环打通。
 
@@ -23,7 +26,7 @@
 ```text
 MENU -> start
 BLIND_SELECT -> select
-SELECTING_HAND -> play 前几张牌
+SELECTING_HAND -> play 基础估分最高的牌
 ROUND_EVAL -> cash_out
 SHOP -> next_round
 SMODS_BOOSTER_OPENED -> skip_pack
@@ -71,15 +74,15 @@ error
 
 目标：让 AI 不再“打前 5 张”，而是能挑出更合理的牌。
 
-建议新增：
+第一版已经新增：
 
 | 模块 | 作用 |
 | --- | --- |
 | `hand_evaluator.py` | 根据当前手牌枚举可打组合，识别基础牌型 |
 | `card_utils.py` | 解析 `H_A`、`S_T` 等 card key，转换花色和点数 |
-| `strategy_play.py` | SELECTING_HAND 阶段的出牌/弃牌策略 |
+| `strategy_play.py` | SELECTING_HAND 阶段的基础出牌策略 |
 
-第一版只需要支持普通扑克牌基础牌型：
+第一版支持普通扑克牌基础牌型：
 
 ```text
 High Card
@@ -93,7 +96,14 @@ Four of a Kind
 Straight Flush
 ```
 
-暂时可以不考虑所有小丑牌效果。先实现“基础牌型分数更高”的选择能力。
+它会用 BalatroBot 返回的 `hands` 字段读取当前牌型的 chips/mult，并加上计分牌的基础筹码做粗略估分。
+
+当前仍未覆盖：
+
+1. 小丑牌完整效果。
+2. 增强牌、蜡封、版本的完整计分。
+3. 弃牌找牌策略。
+4. Boss 盲注的全部特殊限制。
 
 ## 阶段 4：商店策略
 
@@ -157,10 +167,10 @@ decide_pack_action(state)
 
 推荐下一批任务顺序：
 
-1. 跑 `simple_bot.py`，确认它能自动走完整局。
+1. 跑 `simple_bot.py`，观察基础出牌策略能否稳定过第一轮。
 2. 增加运行日志，把每一步状态和动作保存下来。
-3. 实现 `hand_evaluator.py`，先识别基础牌型。
-4. 把 `simple_bot.py` 的出牌逻辑替换成“选择基础分最高的 5 张”。
+3. 增加简单弃牌策略：分数明显不够时弃掉低价值孤张。
+4. 把增强牌、蜡封、版本逐步纳入估分。
 5. 再开始做商店策略。
 
 ## 开发约定

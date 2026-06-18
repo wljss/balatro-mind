@@ -5,6 +5,7 @@
 1. 通过 BalatroBot mod 读取游戏状态。
 2. 把游戏状态整理成后续 AI 决策容易使用的数据结构。
 3. 封装 BalatroBot 动作 API，跑通一个最小自动 bot。
+4. 增加基础手牌评估，让 bot 不再无脑打前 5 张。
 
 部分思路参考了 [balatro-agent](https://github.com/Arcadi4/balatro-agent)。
 
@@ -164,9 +165,34 @@ state = client.cash_out()
 - `buy(...)` / `sell(...)` / `reroll()`：商店相关动作
 - `pack(...)` / `skip_pack()`：补充包相关动作
 
+## 基础出牌策略
+
+现在 `simple_bot.py` 在 `SELECTING_HAND` 阶段会调用基础出牌策略，而不是直接打出前 5 张。
+
+相关模块：
+
+- `card_utils.py`：解析 BalatroBot 返回的卡牌，提取花色、点数、基础筹码等信息。
+- `hand_evaluator.py`：枚举 1 到 5 张手牌组合，识别基础牌型并估分。
+- `strategy_play.py`：选择当前估分最高的出牌组合。
+
+当前估分主要使用：
+
+```text
+estimated_score = (牌型基础筹码 + 计分牌基础筹码) * 牌型倍率
+```
+
+牌型基础筹码和倍率会优先读取 BalatroBot 返回的 `hands` 字段，因此星球牌升级后的牌型数值也能被第一版策略利用。
+
+当前还没有完整模拟：
+
+- 小丑牌效果
+- 增强牌、蜡封、版本的完整计分
+- Boss 盲注的全部特殊限制
+- 弃牌找牌策略
+
 ## 运行最小 bot
 
-`simple_bot.py` 是当前的最小闭环 bot。它只按游戏阶段执行最朴素的合法动作，用来验证“读取状态 -> 执行动作 -> 再读取状态”的链路。
+`simple_bot.py` 是当前的最小闭环 bot。它按游戏阶段执行合法动作，并在出牌阶段使用基础手牌评估器。
 
 从当前状态接管：
 
@@ -196,7 +222,7 @@ uv run python simple_bot.py --max-steps 100 --interval 0.2 --final-json
 
 - `MENU`：开始新 run
 - `BLIND_SELECT`：直接选择当前盲注
-- `SELECTING_HAND`：打出手牌最前面的 5 张
+- `SELECTING_HAND`：枚举手牌组合，打出估分最高的一组牌
 - `ROUND_EVAL`：结算奖励
 - `SHOP`：直接进入下一轮
 - `SMODS_BOOSTER_OPENED`：跳过补充包

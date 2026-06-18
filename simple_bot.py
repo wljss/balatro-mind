@@ -1,6 +1,6 @@
 """一个最小闭环 Balatro bot。
 
-这个 bot 的目标不是“打得好”，而是验证整条链路：
+这个 bot 的目标不是完整模拟高手策略，而是验证整条链路：
 
 1. 从 BalatroBot 读取当前 GameState。
 2. 根据 `state` 选择一个合法动作。
@@ -25,6 +25,7 @@ from balatro_state_reader import (
     area_cards,
     compact_game_state,
 )
+from strategy_play import choose_play_action
 
 
 @dataclass(slots=True)
@@ -43,7 +44,7 @@ class SimpleBotConfig:
 
 @dataclass(slots=True)
 class SimpleBot:
-    """只按游戏阶段行动的 baseline bot。"""
+    """按游戏阶段行动的 baseline bot。"""
 
     client: BalatroActionClient
     config: SimpleBotConfig
@@ -83,12 +84,12 @@ class SimpleBot:
             return self.client.select()
 
         if state_name == "SELECTING_HAND":
-            cards = self._first_hand_indices(state)
-            if not cards:
+            decision = choose_play_action(state, max_cards=self.config.play_count)
+            if not decision.cards:
                 print("      action=refresh_state (no hand cards)")
                 return self.client.get_game_state()
-            print(f"      action=play cards={cards}")
-            return self.client.play(cards)
+            print(f"      action=play {decision.log_text()}")
+            return self.client.play(decision.cards)
 
         if state_name == "ROUND_EVAL":
             print("      action=cash_out")
@@ -128,13 +129,6 @@ class SimpleBot:
             )
 
         return state
-
-    def _first_hand_indices(self, state: GameState) -> list[int]:
-        """最朴素的出牌策略：直接打出手牌最前面的 N 张。"""
-
-        hand_size = len(area_cards(state, "hand"))
-        count = min(self.config.play_count, hand_size)
-        return list(range(count))
 
     def _describe_state(self, state: GameState) -> str:
         """生成一行适合命令行观察的状态摘要。"""
@@ -194,7 +188,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--play-count",
         type=int,
         default=5,
-        help="SELECTING_HAND 阶段最多打出前几张手牌。",
+        help="SELECTING_HAND 阶段最多允许策略打出几张手牌，最大有效值为 5。",
     )
     parser.add_argument(
         "--interval",
