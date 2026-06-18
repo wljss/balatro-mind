@@ -1,9 +1,10 @@
 # balatro-mind
 
-这个项目的目标是做一个会玩《Balatro / 小丑牌》的 AI。当前阶段先解决两个基础问题：
+这个项目的目标是做一个会玩《Balatro / 小丑牌》的 AI。当前阶段先解决几个基础问题：
 
 1. 通过 BalatroBot mod 读取游戏状态。
 2. 把游戏状态整理成后续 AI 决策容易使用的数据结构。
+3. 封装 BalatroBot 动作 API，跑通一个最小自动 bot。
 
 部分思路参考了 [balatro-agent](https://github.com/Arcadi4/balatro-agent)。
 
@@ -139,6 +140,68 @@ for state in client.iter_game_states(interval_seconds=0.25):
 完整字段以 BalatroBot 返回的 GameState 为准，相关离线文档在 `BalatroBot-html/` 目录。
 
 更详细的返回字段说明见 [docs/balatro_state_reader_returns.md](docs/balatro_state_reader_returns.md)。
+
+## 操作游戏动作
+
+`balatro_action_client.py` 封装了 BalatroBot 的动作接口，例如：
+
+```python
+from balatro_action_client import BalatroActionClient
+
+client = BalatroActionClient()
+state = client.select()
+state = client.play([0, 1, 2, 3, 4])
+state = client.cash_out()
+```
+
+常用动作包括：
+
+- `start()`：开始新 run
+- `select()` / `skip()`：选择或跳过盲注
+- `play(cards)` / `discard(cards)`：打出或弃掉手牌
+- `cash_out()`：结算本轮
+- `next_round()`：离开商店进入下一轮
+- `buy(...)` / `sell(...)` / `reroll()`：商店相关动作
+- `pack(...)` / `skip_pack()`：补充包相关动作
+
+## 运行最小 bot
+
+`simple_bot.py` 是当前的最小闭环 bot。它只按游戏阶段执行最朴素的合法动作，用来验证“读取状态 -> 执行动作 -> 再读取状态”的链路。
+
+从当前状态接管：
+
+```powershell
+uv run python simple_bot.py
+```
+
+强制回到菜单并开始新 run：
+
+```powershell
+uv run python simple_bot.py --new-run
+```
+
+指定牌组、难度和种子：
+
+```powershell
+uv run python simple_bot.py --new-run --deck RED --stake WHITE --seed TEST123
+```
+
+常用调试参数：
+
+```powershell
+uv run python simple_bot.py --max-steps 100 --interval 0.2 --final-json
+```
+
+当前 bot 的策略非常简单：
+
+- `MENU`：开始新 run
+- `BLIND_SELECT`：直接选择当前盲注
+- `SELECTING_HAND`：打出手牌最前面的 5 张
+- `ROUND_EVAL`：结算奖励
+- `SHOP`：直接进入下一轮
+- `SMODS_BOOSTER_OPENED`：跳过补充包
+
+后续开发路线见 [docs/development_plan.md](docs/development_plan.md)。
 
 ## 常见问题
 
