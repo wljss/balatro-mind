@@ -25,7 +25,7 @@ GameState = JsonObject
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 12346
-DEFAULT_TIMEOUT_SECONDS = 5.0
+DEFAULT_TIMEOUT_SECONDS = 20.0
 
 
 class BalatroBotError(RuntimeError):
@@ -34,6 +34,10 @@ class BalatroBotError(RuntimeError):
 
 class BalatroBotConnectionError(BalatroBotError):
     """无法连接 BalatroBot HTTP 服务时抛出。"""
+
+
+class BalatroBotTimeoutError(BalatroBotConnectionError):
+    """BalatroBot 请求超时时抛出，动作可能已经被游戏接收。"""
 
 
 class BalatroBotProtocolError(BalatroBotError):
@@ -99,7 +103,22 @@ class BalatroBotClient:
             raise BalatroBotConnectionError(
                 f"BalatroBot returned HTTP {exc.code}: {details}"
             ) from exc
-        except (OSError, TimeoutError) as exc:
+        except TimeoutError as exc:
+            raise BalatroBotTimeoutError(
+                f"BalatroBot request to {self.url} timed out after "
+                f"{self.timeout:g} seconds."
+            ) from exc
+        except error.URLError as exc:
+            if isinstance(exc.reason, TimeoutError):
+                raise BalatroBotTimeoutError(
+                    f"BalatroBot request to {self.url} timed out after "
+                    f"{self.timeout:g} seconds."
+                ) from exc
+            raise BalatroBotConnectionError(
+                f"Could not connect to BalatroBot at {self.url}. "
+                "Start it with `uvx balatrobot serve` or set BALATROBOT_PORT."
+            ) from exc
+        except OSError as exc:
             raise BalatroBotConnectionError(
                 f"Could not connect to BalatroBot at {self.url}. "
                 "Start it with `uvx balatrobot serve` or set BALATROBOT_PORT."

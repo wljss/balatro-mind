@@ -91,7 +91,7 @@ uv run python balatro_state_reader.py --port 8080
 ```powershell
 $env:BALATROBOT_HOST = "127.0.0.1"
 $env:BALATROBOT_PORT = "12346"
-$env:BALATROBOT_TIMEOUT = "5"
+$env:BALATROBOT_TIMEOUT = "20"
 uv run python balatro_state_reader.py
 ```
 
@@ -215,7 +215,15 @@ uv run python simple_bot.py --new-run --deck RED --stake WHITE --seed TEST123
 常用调试参数：
 
 ```powershell
-uv run python simple_bot.py --max-steps 100 --interval 0.2 --final-json
+uv run python simple_bot.py --max-steps 100 --interval 0.2 --timeout 30 --final-json
+```
+
+如果 BalatroBot 在计分动画、回合结算或状态切换时响应较慢，可以继续调大 `--timeout`。`simple_bot.py` 在动作请求超时时会等待并重新读取 `gamestate`，避免重复发送同一个可能已经生效的动作。
+
+也可以调整超时恢复轮询：
+
+```powershell
+uv run python simple_bot.py --timeout 30 --recovery-attempts 15 --recovery-interval 1
 ```
 
 当前 bot 的策略非常简单：
@@ -248,6 +256,12 @@ uv run python balatro_state_reader.py --port 8080
 ```powershell
 uvx balatrobot api health
 uvx balatrobot api gamestate
+```
+
+如果 bot 在打出关键牌后出现 timeout，一般不是策略出错，而是 BalatroBot 还在等待游戏计分或切换状态。优先尝试：
+
+```powershell
+uv run python simple_bot.py --timeout 30
 ```
 
 ## 后续开发约定

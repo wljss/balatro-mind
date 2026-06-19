@@ -18,6 +18,8 @@ from dataclasses import dataclass
 
 from balatro_action_client import BalatroActionClient
 from balatro_state_reader import (
+    BalatroBotConnectionError,
+    BalatroBotTimeoutError,
     DEFAULT_HOST,
     DEFAULT_PORT,
     DEFAULT_TIMEOUT_SECONDS,
@@ -38,6 +40,8 @@ class SimpleBotConfig:
     max_steps: int = 3000
     play_count: int = 5
     interval_seconds: float = 0.1
+    recovery_attempts: int = 10
+    recovery_interval_seconds: float = 1.0
     new_run: bool = False
     print_final_json: bool = False
 
@@ -61,7 +65,11 @@ class SimpleBot:
                 self._print_game_over(state)
                 return state
 
-            state = self.step(state)
+            try:
+                state = self.step(state)
+            except BalatroBotTimeoutError as exc:
+                print(f"      timeout={exc}")
+                state = self._recover_after_timeout()
             time.sleep(self.config.interval_seconds)
 
         raise RuntimeError(f"达到 max_steps={self.config.max_steps}，bot 停止运行。")
@@ -145,6 +153,38 @@ class SimpleBot:
             f"hand={hand_size}"
         )
 
+    def _recover_after_timeout(self) -> GameState:
+        """动作请求超时后轮询最新状态，避免重复发送同一个动作。"""
+
+        last_error: BalatroBotConnectionError | None = None
+        for attempt in range(1, self.config.recovery_attempts + 1):
+            time.sleep(self.config.recovery_interval_seconds)
+            try:
+                state = self.client.get_game_state()
+            except BalatroBotConnectionError as exc:
+                last_error = exc
+                print(f"      recover_attempt={attempt} failed={exc}")
+                continue
+
+            print(
+                f"      recover_attempt={attempt} "
+                f"state={state.get('state')} chips="
+                f"{self._state_chips(state)}"
+            )
+            return state
+
+        if last_error is not None:
+            raise last_error
+        raise BalatroBotTimeoutError("动作超时后未能恢复读取游戏状态。")
+
+    def _state_chips(self, state: GameState) -> object:
+        """从状态里取当前筹码，恢复日志里会用到。"""
+
+        round_info = state.get("round")
+        if not isinstance(round_info, dict):
+            return None
+        return round_info.get("chips")
+
     def _print_game_over(self, state: GameState) -> None:
         """打印最终结果。"""
 
@@ -197,6 +237,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="动作之间的等待秒数。",
     )
     parser.add_argument(
+        "--recovery-attempts",
+        type=int,
+        default=10,
+        help="动作请求超时后最多轮询几次状态。",
+    )
+    parser.add_argument(
+        "--recovery-interval",
+        type=float,
+        default=1.0,
+        help="动作请求超时后每次恢复轮询之间等待几秒。",
+    )
+    parser.add_argument(
         "--final-json",
         action="store_true",
         help="GAME_OVER 后额外打印压缩状态 JSON。",
@@ -214,6 +266,8 @@ def main() -> None:
         max_steps=args.max_steps,
         play_count=args.play_count,
         interval_seconds=args.interval,
+        recovery_attempts=args.recovery_attempts,
+        recovery_interval_seconds=args.recovery_interval,
         new_run=args.new_run,
         print_final_json=args.final_json,
     )
